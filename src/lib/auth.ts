@@ -1,5 +1,4 @@
 import { cookies } from 'next/headers';
-import crypto from 'crypto';
 
 export const AUTH_COOKIE_NAME = 'mongoman-session';
 const SESSION_DURATION = 24 * 60 * 60 * 1000; // 24 hours
@@ -12,7 +11,9 @@ export interface SessionPayload {
   expiresAt: number;
 }
 
-export function getAuthSecret(): string {
+const encoder = new TextEncoder();
+
+async function getAuthKey(): Promise<CryptoKey> {
   const secret = process.env.AUTH_SECRET || process.env.MONGODB_URI;
   if (!secret) {
     throw new Error(
@@ -20,33 +21,56 @@ export function getAuthSecret(): string {
         'Set AUTH_SECRET in your environment variables.',
     );
   }
-  return crypto.createHash('sha256').update(secret).digest('hex');
+  const hash = await crypto.subtle.digest('SHA-256', encoder.encode(secret));
+  return await crypto.subtle.importKey(
+    'raw',
+    hash,
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign', 'verify']
+  );
 }
 
-function sign(payload: string): string {
-  const secret = getAuthSecret();
-  const hmac = crypto.createHmac('sha256', secret);
-  hmac.update(payload);
-  return hmac.digest('hex');
+function bufferToHex(buffer: ArrayBuffer): string {
+  return Array.from(new Uint8Array(buffer))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
 }
 
-function createToken(payload: SessionPayload): string {
-  const data = Buffer.from(JSON.stringify(payload)).toString('base64');
-  const signature = sign(data);
+function hexToBuffer(hex: string): Uint8Array {
+  const bytes = new Uint8Array(Math.ceil(hex.length / 2));
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = parseInt(hex.substring(i * 2, i * 2 + 2), 16);
+  }
+  return bytes;
+}
+
+async function sign(payload: string): Promise<string> {
+  const key = await getAuthKey();
+  const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(payload));
+  return bufferToHex(signature);
+}
+
+async function createToken(payload: SessionPayload): Promise<string> {
+  const data = btoa(JSON.stringify(payload));
+  const signature = await sign(data);
   return `${data}.${signature}`;
 }
 
-export function verifyToken(token: string): SessionPayload | null {
+export async function verifyToken(token: string): Promise<SessionPayload | null> {
   try {
-    const [data, signature] = token.split('.');
-    if (!data || !signature) return null;
-    const expected = sign(data);
-    const sigBuffer = Buffer.from(signature, 'hex');
-    const expectedBuffer = Buffer.from(expected, 'hex');
-    if (sigBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(sigBuffer, expectedBuffer)) {
-      return null;
-    }
-    const payload: SessionPayload = JSON.parse(Buffer.from(data, 'base64').toString());
+    const [data, signatureHex] = token.split('.');
+    if (!data || !signatureHex) return null;
+
+    const key = await getAuthKey();
+    const sigBytes = hexToBuffer(signatureHex);
+
+    const isValid = await crypto.subtle.verify('HMAC', key, sigBytes, encoder.encode(data));
+    if (!isValid) return null;
+
+    const payloadStr = atob(data);
+    const payload: SessionPayload = JSON.parse(payloadStr);
+
     if (Date.now() > payload.expiresAt) return null;
     return payload;
   } catch {
@@ -59,10 +83,12 @@ export function isAuthEnabled(): boolean {
 }
 
 function safeCompare(a: string, b: string): boolean {
-  const bufA = Buffer.from(a);
-  const bufB = Buffer.from(b);
-  if (bufA.length !== bufB.length) return false;
-  return crypto.timingSafeEqual(bufA, bufB);
+  if (a.length !== b.length) return false;
+  let mismatch = 0;
+  for (let i = 0; i < a.length; ++i) {
+    mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return mismatch === 0;
 }
 
 export async function authenticate(username: string, password: string): Promise<SessionPayload | null> {
@@ -83,7 +109,7 @@ export async function authenticate(username: string, password: string): Promise<
 }
 
 export async function createSession(payload: SessionPayload): Promise<void> {
-  const token = createToken(payload);
+  const token = await createToken(payload);
   const cookieStore = await cookies();
   cookieStore.set(AUTH_COOKIE_NAME, token, {
     httpOnly: true,
