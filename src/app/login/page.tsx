@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Form, FormControl, FormField, FormItem, FormLabel } from '@/components/ui/form';
 import { GalleryVerticalEnd } from 'lucide-react';
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 
 const LoginSchema = z.object({
   username: z.string().min(1, 'Username is required'),
@@ -19,7 +19,7 @@ const LoginSchema = z.object({
 
 type LoginForm = z.infer<typeof LoginSchema>;
 
-export default function LoginPage() {
+function LoginContent() {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
@@ -109,5 +109,13 @@ export default function LoginPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginContent />
+    </Suspense>
   );
 }

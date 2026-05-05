@@ -292,8 +292,8 @@ export async function restoreDatabase(dbName: string, backup: Record<string, obj
     }
 
     // Deserialize EJSON types and strip _id to let MongoDB generate new ObjectIds
-    const cleanDocs = documents.map((doc: Record<string, unknown>) => {
-      const deserialized = EJSON.deserialize(doc);
+    const cleanDocs = documents.map((doc) => {
+      const deserialized = EJSON.deserialize(doc as Record<string, unknown>);
       const { _id, ...rest } = deserialized as Record<string, unknown>;
       return rest;
     });

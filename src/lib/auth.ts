@@ -65,7 +65,7 @@ export async function verifyToken(token: string): Promise<SessionPayload | null>
     const key = await getAuthKey();
     const sigBytes = hexToBuffer(signatureHex);
 
-    const isValid = await crypto.subtle.verify('HMAC', key, sigBytes, encoder.encode(data));
+    const isValid = await crypto.subtle.verify('HMAC', key, sigBytes as any, encoder.encode(data));
     if (!isValid) return null;
 
     const payloadStr = atob(data);
