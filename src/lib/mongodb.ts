@@ -214,6 +214,14 @@ export async function deleteDocument(dbName: string, collectionName: string, id:
   await collection.deleteOne({ _id: new ObjectId(id) });
 }
 
+export async function deleteDocuments(dbName: string, collectionName: string, filter?: object) {
+  'use server';
+  const client = await clientPromise;
+  const collection = client.db(dbName).collection(collectionName);
+  const result = await collection.deleteMany(filter || {});
+  return { deletedCount: result.deletedCount };
+}
+
 export async function renameCollection(dbName: string, oldName: string, newName: string) {
   'use server';
   const client = await clientPromise;

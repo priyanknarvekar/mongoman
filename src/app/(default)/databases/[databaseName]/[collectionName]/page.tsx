@@ -1,5 +1,5 @@
 import { PageParamsWithCollection } from '@/lib/types';
-import { getDocuments, createDocument, updateDocument, deleteDocument } from '@/lib/mongodb';
+import { getDocuments, createDocument, updateDocument, deleteDocument, deleteDocuments } from '@/lib/mongodb';
 import { DocumentManagement } from '@/app/(default)/databases/[databaseName]/[collectionName]/manage/document-management';
 import { EJSON } from 'bson';
 import { FileText } from 'lucide-react';
@@ -32,6 +32,11 @@ export default async function Page({ params }: PageParamsWithCollection) {
     return updateDocument(dbName, collectionName, id, deserializedDoc);
   };
 
+  const deleteDocumentsWithFilter = async (dbName: string, collectionName: string, filter?: object) => {
+    'use server';
+    return deleteDocuments(dbName, collectionName, filter);
+  };
+
   return (
     <div className='p-6 space-y-6'>
       <div className='flex items-center gap-3'>
@@ -53,6 +58,7 @@ export default async function Page({ params }: PageParamsWithCollection) {
         createDocument={createSerializedDocument}
         updateDocument={updateSerializedDocument}
         deleteDocument={deleteDocument}
+        deleteDocuments={deleteDocumentsWithFilter}
       />
     </div>
   );

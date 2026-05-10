@@ -257,6 +257,7 @@ interface DocumentManagementProps {
     document: Omit<Document, '_id'>,
   ) => Promise<void>;
   deleteDocument: (dbName: string, collectionName: string, id: string) => Promise<void>;
+  deleteDocuments: (dbName: string, collectionName: string, filter?: object) => Promise<{ deletedCount: number }>;
   onDocumentsChange?: () => void;
 }
 
@@ -266,6 +267,7 @@ export function DocumentManagement({
   createDocument,
   updateDocument,
   deleteDocument,
+  deleteDocuments,
   getDocuments,
 }: DocumentManagementProps) {
   const { toast } = useToast();
@@ -280,6 +282,8 @@ export function DocumentManagement({
   const [isLoadingDocs, setIsLoadingDocs] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deletingDocId, setDeletingDocId] = useState<string | null>(null);
+  const [isDeletingDocuments, setIsDeletingDocuments] = useState(false);
+  const [deleteDocumentsDialogOpen, setDeleteDocumentsDialogOpen] = useState(false);
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(10);
 
@@ -323,9 +327,9 @@ export function DocumentManagement({
     setPage(0); // Reset to first page
   };
 
-  const refreshCurrentPage = () => {
+  const refreshCurrentPage = useCallback(() => {
     fetchDocuments(page, pageSize, searchQuery);
-  };
+  }, [fetchDocuments, page, pageSize, searchQuery]);
 
   const handleCreateDocument = async () => {
     if (Object.keys(documentContent).length === 0) {
@@ -378,8 +382,32 @@ export function DocumentManagement({
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [deleteDocument, databaseName, collectionName, toast],
+    [deleteDocument, databaseName, collectionName, toast, refreshCurrentPage],
   );
+
+  const handleDeleteDocuments = useCallback(async () => {
+    let filter = {};
+    try {
+      if (searchQuery) filter = JSON.parse(searchQuery);
+    } catch {
+      toast({ title: 'Error', description: 'Invalid JSON filter', variant: 'destructive' });
+      return;
+    }
+
+    setIsDeletingDocuments(true);
+    try {
+      const { deletedCount } = await deleteDocuments(databaseName, collectionName, filter);
+      toast({ title: 'Documents deleted', description: `Successfully deleted ${deletedCount} document(s)` });
+      setPage(0);
+      // Need to fetch directly as page reset might not trigger immediately if page was already 0
+      fetchDocuments(0, pageSize, searchQuery);
+      setDeleteDocumentsDialogOpen(false);
+    } catch {
+      toast({ title: 'Error', description: 'Failed to delete documents', variant: 'destructive' });
+    } finally {
+      setIsDeletingDocuments(false);
+    }
+  }, [deleteDocuments, databaseName, collectionName, searchQuery, pageSize, toast, fetchDocuments]);
 
   const handleEdit = useCallback((document: Document) => {
     setSelectedDocument(document);
@@ -449,11 +477,43 @@ export function DocumentManagement({
             </span>
           )}
         </div>
-        <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-          <DialogTrigger asChild>
-            <Button>Create Document</Button>
-          </DialogTrigger>
-        </Dialog>
+        <div className='flex items-center gap-2'>
+          <AlertDialog open={deleteDocumentsDialogOpen} onOpenChange={setDeleteDocumentsDialogOpen}>
+            <AlertDialogTrigger asChild>
+              <Button variant="destructive" disabled={isDeletingDocuments || totalCount === 0}>
+                {isDeletingDocuments ? 'Deleting...' : 'Delete Documents'}
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete Documents</AlertDialogTitle>
+                <AlertDialogDescription>
+                  {searchQuery 
+                    ? `Are you sure you want to delete ${totalCount} document(s) matching your filter? This action cannot be undone.`
+                    : `Are you sure you want to delete ALL ${totalCount} document(s) in this collection? This action cannot be undone.`}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={isDeletingDocuments}>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  disabled={isDeletingDocuments}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    handleDeleteDocuments();
+                  }}
+                  className='bg-red-600 hover:bg-red-700'
+                >
+                  {isDeletingDocuments ? 'Deleting...' : 'Delete'}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+          <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+            <DialogTrigger asChild>
+              <Button>Create Document</Button>
+            </DialogTrigger>
+          </Dialog>
+        </div>
       </CardHeader>
       <CardContent className='space-y-4'>
         <Tabs defaultValue="table" className="w-full">
