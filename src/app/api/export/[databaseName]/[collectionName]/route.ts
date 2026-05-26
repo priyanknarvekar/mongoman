@@ -26,7 +26,9 @@ export async function GET(
         'Content-Disposition': `attachment; filename="${collectionName}.json"`,
       },
     });
-  } catch {
-    return NextResponse.json({ error: 'Failed to export collection' }, { status: 500 });
+  } catch (error) {
+    console.error('Export error:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    return NextResponse.json({ error: 'Failed to export collection', details: errorMessage, stack: error instanceof Error ? error.stack : undefined }, { status: 500 });
   }
 }
